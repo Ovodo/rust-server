@@ -1,4 +1,4 @@
-use super::ress::HttpResponse;
+use super::response::HttpResponse;
 use std::{collections::HashMap, fmt::Display, io, str::FromStr};
 #[derive(Debug)]
 pub struct HttpRequest {
