@@ -94,14 +94,105 @@ impl HttpResponse {
 
                     }
                 } else if new_path.is_dir() {
-                    response_body.push_str("<html><body><h1>Directory Listing</h1><ul>");
+                    // Start of beautiful HTML directory listing (HTML and style only)
+                    response_body.push_str(r#"
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+  <meta charset='UTF-8'>
+  <title>Ovdizzle Directory Listing</title>
+  <link href='https://fonts.googleapis.com/css?family=Segoe+UI:400,700&display=swap' rel='stylesheet'>
+  <style>
+    body {
+      margin: 0; padding: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 60% 40%, #ffe066 0%, #ff9966 40%, #ff5e62 100%);
+      font-family: 'Segoe UI', Arial, sans-serif;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .container {
+      background: rgba(255,255,255,0.18);
+      box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18);
+      backdrop-filter: blur(8px);
+      border-radius: 28px;
+      padding: 48px 36px 36px 36px;
+      margin-top: 60px;
+      min-width: 340px;
+      max-width: 600px;
+      width: 90vw;
+      border: 1.5px solid rgba(255,255,255,0.22);
+    }
+    h1 {
+      color: #fff;
+      font-size: 2.3em;
+      margin-bottom: 20px;
+      letter-spacing: 2px;
+      text-shadow: 2px 2px 12px #ff5e62, 0 1px 0 #ffe066;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    li {
+      margin: 12px 0;
+      text-align: left;
+    }
+    a {
+      color: #ff5e62;
+      background: #ffe066;
+      padding: 10px 22px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-weight: bold;
+      box-shadow: 0 2px 8px rgba(255,224,102,0.13);
+      transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+      display: inline-block;
+      font-size: 1.08em;
+      border: 1.5px solid #ff5e62;
+    }
+    a:hover {
+      background: #ff5e62;
+      color: #ffe066;
+      box-shadow: 0 4px 16px rgba(255,94,98,0.18);
+    }
+    .up-link {
+      color: #fff;
+      background: #ff5e62;
+      font-size: 1em;
+      margin-bottom: 16px;
+      border: 1.5px solid #ffe066;
+      box-shadow: 0 2px 8px rgba(255,94,98,0.13);
+    }
+    .up-link:hover {
+      background: #ffe066;
+      color: #ff5e62;
+      border: 1.5px solid #ff5e62;
+    }
+    .dir:after {
+      content: '  📁';
+      margin-left: 8px;
+    }
+    .file:after {
+      content: '  📄';
+      margin-left: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class='container'>
+    <h1>Directory Listing</h1>
+    <ul>
+"#);
 
                     // Add the "up" link to go up one directory
                     if let Some(parent_path) = Path::new(&decoded_path).parent() {
-                        let parent_path_str = parent_path.to_str().unwrap_or("/");
+                        let parent_path_str = parent_path.to_str().unwrap_or("");
+                        // Avoid double slashes and encoding issues
+                        let up_href = if parent_path_str.is_empty() { "" } else { parent_path_str.trim_start_matches('/') };
                         response_body.push_str(&format!(
-                            r#"<li><a href="/{}">up</a></li>"#,
-                            parent_path_str.trim_start_matches("/")
+                            r#"      <li><a class='up-link' href='/{}'>⬆️ Up</a></li>"#,
+                            up_href
                         ));
                     }
 
@@ -109,23 +200,36 @@ impl HttpResponse {
                     for entry in dir_list {
                         let entry = entry?;
                         let file_name = entry.file_name().into_string().unwrap_or_default();
-                        let mut new = String::new();
-                        let name = encode_component_to_string(file_name.clone(), &mut new );
-                        let file_path = format!("{}/{}", decoded_path, name.to_string());
-                        let display_name = if entry.path().is_dir() {
+                        // Only encode the file name, not the whole path, and do not add quotes
+                        let mut encoded = String::new();
+                        let encoded_file_name = encode_component_to_string(&file_name, &mut encoded);
+                        let file_path = if decoded_path.is_empty() {
+                            encoded_file_name.to_string()
+                        } else {
+                            format!("{}/{}", decoded_path.trim_end_matches('/'), encoded_file_name)
+                        };
+                        let is_dir = entry.path().is_dir();
+                        let display_name = if is_dir {
                             format!("{}/", file_name)
                         } else {
-                            file_name
+                            file_name.clone()
                         };
-
+                        let class = if is_dir { "dir" } else { "file" };
+                        // Only encode the file_path for the href, not the display_name
                         response_body.push_str(&format!(
-                            r#"<li><a href="/{}">{}</a></li>"#,
-                            file_path.trim_start_matches('/'), // Remove leading slash to avoid //
+                            r#"      <li><a class='{}' href='/{}'>{}</a></li>"#,
+                            class,
+                            file_path.trim_start_matches('/'),
                             display_name
                         ));
                     }
 
-                    response_body.push_str("</ul></body></html>");
+                    response_body.push_str(r#"    </ul>
+  </div>
+  <footer style=\"margin-top: 40px; color: #fff; font-size: 16px; opacity: 0.8;\">&copy; 2025 Ovdizzle Server</footer>
+</body>
+</html>
+"#);
                     content_length = response_body.len();
                     status = ResponseStatus::OK;
                     content_type = "text/html".to_string();
